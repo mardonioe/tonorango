@@ -48,7 +48,8 @@ def create_user():
 											   # ou None se nao encontrar nenhum.
 	if user:
 		# usuario ja existe. retornar em formato JSON padrao com mensagem.
-		return json.dumps({'success': True, 'msg': 'usuario ja existente.'})
+		# return mongo_dumps(user)
+		return json.dumps({'success': True, 'msg': 'usuario ja existente.', "user" : json.dump(user)})
 	else:
 		# usuario nao existe. inserir novo usuario.
 		user = db.users.insert({'name': name, 'email': email, 'password': password})
