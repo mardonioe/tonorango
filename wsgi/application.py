@@ -182,8 +182,24 @@ def list_user(user):
 def get_list_itens():
     response.content_type = 'application/json'
     db = get_database_connection()  # conecta com a base de dados e armazena a conexao em db.
-    itens = db.itens.find()
-    return mongo_dumps(itens)
+    sessions = db.sessions.find()
+
+    """lista_itens = "{}"""""
+    lista_sessoes = "{}"
+
+    for session in sessions:
+
+        itens = db.itens.find({'sessao': session['name']})
+
+        """for item in itens:
+            lista_itens += ',{"nome":"' + item['name'] + '","preco":' + float(item['preco']) + '}'"""
+
+        lista_sessoes += ',{"nome":"' + session['name'] + '","itens":[' + itens + ']}'
+
+    if lista_sessoes != "{}":
+        return json.dumps('{"sessoes":[' + lista_sessoes[1:] + ']}')
+    else:
+        return json.dumps({'success': False, 'msg': 'Não existe sessão cadastrada.'})
 
 
 def isNumeber(value):
