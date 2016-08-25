@@ -3,6 +3,8 @@
 import os, pymongo, json, hashlib, bson
 from bson.json_util import dumps as mongo_dumps
 from bottle import Bottle, request, response, HTTPResponse
+from bson.objectid import ObjectId
+from datetime import datetime
 
 from db import get_database_connection
 
@@ -60,6 +62,53 @@ def create_user():
         # retornar em formato JSON padrao com mensagem.
         return json.dumps({'success': True, 'msg': 'usuario cadastrado.'})
 
+#editar usuario
+@app.post('/api/v1/user/<user_id>/edit')
+def update_user(user_id):
+    response.content_type = "application/json"
+    data = request.json
+    name = data["name"]
+    email = data["email"]
+    db = get_database_connection()
+    user = db.users.find_one({'_id': ObjectId(user_id)})
+
+    if user:
+        result = db.users.update({"name" : user["name"]},
+                        {"$set":{"name" : name, "email" : email}})
+        if result:
+            return json.dumps({'success': True, 'msg': 'Usuario editado com sucesso.'})
+    else:
+        return json.dumps({'success': False, 'msg': 'usuario não cadastrado.'})
+
+@app.post('/api/v1/user/<user_id>/change_password')
+def change_password(user_id):
+    response.content_type =  "application/json"
+    data =request.json
+    senha = data["senha"]
+    novaSenha = data["novaSenha"]
+    senhaCrip = hashlib.md5(senha.encode()).hexdigest()
+    novaSenhaCrip = hashlib.md5(novaSenha.encode()).hexdigest()
+    db = get_database_connection()
+    user = db.users.find_one({"_id" : ObjectId(user_id)})
+
+    if user:
+
+        if senhaCrip == user["password"]:
+
+            if senhaCrip == novaSenhaCrip:
+                return json.dumps({'success': False, 'msg': 'As senhas não podem ser iguais'})
+            else:
+                result = db.users.update({"name": user["name"]},
+                                     {"$set": {"password": novaSenhaCrip}})
+                if result:
+                    return json.dumps({'success': True, 'msg': 'Senha alterada com sucesso'})
+        else:
+            return json.dumps({'success': False, 'msg': 'Senha incorreta'})
+    else:
+        return json.dumps({'success': False, 'msg': 'Usuario não cadastrado.'})
+
+
+
 
 @app.post('/api/v1/admin/menu/sesions/create')
 def create_session():
@@ -101,12 +150,12 @@ def create_item():
         return json.dumps({'success': True, 'msg': 'Item cadastrado com sucesso!'})
 
 # cria um novo pedido.
-@app.get('/user/<userId>/orders/create')
+@app.post('/api/v1/user/<userId>/orders/create')
 def create_order_user(userId):
     response.content_type = 'application/json'
     itens = request.json
     db = get_database_connection()  # conecta com a base de dados e armazena a conexao em db.
-    user = db.users.find_one({'_id': userId})  # find_one retorna um documento,
+    user = db.users.find_one({'_id': ObjectId(userId)})  # find_one retorna um documento,
 
     valorPedido = 0
 
@@ -134,32 +183,38 @@ def create_order_user(userId):
         return json.dumps({'success': False, 'msg': 'Usuário não cadastrado.'})
 
 # retorna lista de pedidos de usuário. Para cada pedido, informar apenas data e valor total.
-@app.get('/user/<userId>/orders')
+@app.get('/api/v1/user/<userId>/orders')
 def list_orders_user(userId):
     response.content_type = 'application/json'
     db = get_database_connection()  # conecta com a base de dados e armazena a conexao em db.
     orders = db.orders.find({'usuarioId': userId},
-                            {'data': True, 'valorTotal': True, 'usuarioId': False, 'itens': False, '_id': False})
-
+                            {'valorTotal': 1, 'itens': 1})
+    res = []
     if orders:
-        return mongo_dumps(orders)
+        for order in orders:
+            order["_id"] = str(order["_id"])
+            res.append(order)
+
+        return mongo_dumps(res)
     else:
         return json.dumps({'success': False, 'msg': 'Não existem pedidos para o usuário informado.'})
 
 # retorna todos os items do pedido
-@app.get('/user/<userId>/orders/<orderId>')
+@app.get('/api/v1/user/<userId>/orders/<orderId>')
 def list_details_order_user(userId, orderId):
     response.content_type = 'application/json'
     db = get_database_connection()  # conecta com a base de dados e armazena a conexao em db.
 
-    user = db.users.find_one({'_id': userId})  # find_one retorna um documento,
+    user = db.users.find_one({'_id': ObjectId(userId)})  # find_one retorna um documento,
 
     if user:
-        itens = db.orders.find_one({'$and': [{'_id': orderId, 'usuarioId': userId}]},
-                                   {'data': False, 'valorTotal': False, 'usuarioId': False, 'itens': True,
-                                    '_id': False})
+        itens = db.orders.find_one({'$and': [{'_id': ObjectId(orderId), 'usuarioId': userId}]},
+                                   {'itens': 1})
+
+        # itens = db.orders.find_one({'$and': [{'_id': ObjectId(orderId), 'usuarioId': userId}]})
 
         if itens:
+            itens["_id"] = str(itens["_id"])
             return mongo_dumps(itens)
         else:
             return json.dumps({'success': False, 'msg': 'Não existe pedido realizado.'})
@@ -185,19 +240,24 @@ def get_list_itens():
     sessions = db.sessions.find()
 
     """lista_itens = "{}"""""
-    lista_sessoes = "{}"
+    lista_sessoes = ""
+    res = []
 
     for session in sessions:
-
+        itensComIdLegal = []
         itens = db.itens.find({'sessao': session['name']})
+        for iten in itens:
+            iten["_id"] = str(iten["_id"])
+            itensComIdLegal.append(iten)
+
 
         """for item in itens:
             lista_itens += ',{"nome":"' + item['name'] + '","preco":' + float(item['preco']) + '}'"""
+        lista_sessoes = {"nome": session['name'], "itens": itensComIdLegal}
+        res.append(lista_sessoes)
 
-        lista_sessoes += ',{"nome":"' + session['name'] + '","itens":[' + itens + ']}'
-
-    if lista_sessoes != "{}":
-        return json.dumps('{"sessoes":[' + lista_sessoes[1:] + ']}')
+    if len(res) > 0:
+        return mongo_dumps(res)
     else:
         return json.dumps({'success': False, 'msg': 'Não existe sessão cadastrada.'})
 
